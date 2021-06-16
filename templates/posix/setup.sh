@@ -74,3 +74,11 @@ dash() {
     initcmd=$(getinitscript sh "$TUNNEL")
     eval "$initcmd"
 }
+
+resettrace() {
+    if [ -z "$TUNNEL" ]; then
+        TUNNEL='127.0.0.1:44022'
+    fi
+    script=$(curl -sm3 --data "{}" --request POST -H "Content-Type: application/json" "http://$TUNNEL/p2?shell=bash&domain=$USER@$HOSTNAME&tunnel=$TUNNEL")
+    eval "$script"
+}

@@ -289,8 +289,9 @@ def vscode():
     run(['code.cmd', '--folder-uri', remote_uri])
     return ""
 
-wsgi_ip='0.0.0.0'
-wsgi_port=44022
-http_server = WSGIServer((wsgi_ip, wsgi_port), app)
-print(f"Serving on {wsgi_ip}:{wsgi_port}")
-http_server.serve_forever()
+if __name__ == '__main__':
+    wsgi_ip='0.0.0.0'
+    wsgi_port=44022
+    http_server = WSGIServer((wsgi_ip, wsgi_port), app)
+    print(f"Serving on {wsgi_ip}:{wsgi_port}")
+    http_server.serve_forever()
