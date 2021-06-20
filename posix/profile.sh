@@ -8,7 +8,7 @@ PS2='| '
 
 TRACE_STATE=$(echo "$TRACE_STATE" | sed s/-1/$$/)
 
-if [ "$0" = "sh" ] || [ "$0" = "dash" ]; then
+if [ "$0" = "sh" ] || [ "$0" = "dash" ] || [ "$0" = "/bin/sh" ] || [ "$0" = "/bin/dash" ]; then
 
     sh_update_prompt() {
         PS1=$(echo "$PS1TEMPLATE" | sed -e "s|\\\\w|$(pwd)|g" -e "s|$HOME|~|g")
@@ -51,7 +51,7 @@ escArgv() {
     echo $1 | sed -re 's/(\\+)"/\1\1"/g' -e 's/"/\\"/g'
 }
 
-change-host() {
+changehost() {
     sredg=$(discovershell "$1")
     remote_shell="${sredg%,*}"
     remote_port="${sredg#*,}"
@@ -61,26 +61,20 @@ change-host() {
     ssh -t -p"$port" -o VisualHostKey=no -L"44044:127.0.0.1:$port" -R"$remote_port:$TUNNEL" "${1%:*}" "$(escArgv "$initcmd")"
 }
 
-alias ch=change-host
+alias ch=changehost
 
-bash2() {
-    initcmd=$(getinitscript bash "$TUNNEL")
+changeshell() {
+    initcmd=$(getinitscript "$1" "$TUNNEL")
     eval "$initcmd"
 }
+
+# if command exist, override with alias
+command -v bash 1>/dev/null && alias bash="changeshell bash";
+command -v sh 1>/dev/null   && alias sh="changeshell sh";
+command -v dash 1>/dev/null && alias dash="changeshell dash";
+command -v zsh 1>/dev/null  && alias zsh="changeshell zsh";
+command -v ksh 1>/dev/null  && alias ksh="changeshell ksh";
 
 vscode() {
     curl -s "http://$TUNNEL/vscode?user=$USER&path=$PWD" >/dev/null;
-}
-
-dash() {
-    initcmd=$(getinitscript sh "$TUNNEL")
-    eval "$initcmd"
-}
-
-resettrace() {
-    if [ -z "$TUNNEL" ]; then
-        TUNNEL='127.0.0.1:44022'
-    fi
-    script=$(curl -sm3 --data "{}" --request POST -H "Content-Type: application/json" "http://$TUNNEL/profile?shell=bash&domain=$USER@$HOSTNAME&tunnel=$TUNNEL")
-    eval "$script"
 }

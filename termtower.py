@@ -137,7 +137,7 @@ def get_bootstrap_script(language, target_shell=None, tunnel=f"127.0.0.1:{tunnel
     else:
         target_shell_plugin = plugin
     
-    command = target_shell_plugin.start_shell(server, target_shell)
+    command = target_shell_plugin.start_shell(server, target_shell) + ";"
 
     if '{{ profile.file }}' in command:
         create_cmd = plugin.create_temp_file(server, language)

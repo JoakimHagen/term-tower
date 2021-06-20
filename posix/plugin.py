@@ -3,7 +3,9 @@ def is_supported(server, language):
     return language in ['sh', 'dash', 'bash', 'zsh', 'ksh']
 
 def start_shell(server, language):
-    return language + " --rcfile {{ profile.file }} -i"
+    if language in ['sh', 'dash']:
+        return "ENV={{ profile.file }} /bin/" + language
+    return "/bin/" + language + " --rcfile {{ profile.file }} -i"
 
 def get_bootstrap(server, language):
     
