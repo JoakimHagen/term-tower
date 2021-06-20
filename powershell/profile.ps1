@@ -4,9 +4,7 @@ $TRACE_STATE = '{{ STATE }}'
 $env:TUNNEL = '{{ tunnel }}'
 $prompt_template = '{{ PROMPT }}'
 
-echo "state: $TRACE_STATE"
-echo "tunnel: $env:TUNNEL"
-echo "template: $prompt_template"
+$TRACE_STATE = $TRACE_STATE -Replace '-1',"$PID"
 
 function prompt { $prompt_template -Replace '\{cwd\}',(Get-Location) }
 
@@ -110,7 +108,7 @@ function Reset-Trace () {
     if ($null -Eq $env:TUNNEL) {
         $env:TUNNEL = '127.0.0.1:44022'
     }
-    $script = Invoke-WebRequest -Uri "http://$env:TUNNEL/p2?shell=powershell&domain=$Env:UserName@$Env:ComputerName&tunnel=$env:TUNNEL" -Body '{}' -Method POST -ContentType 'application/json' | Select-Object -Expand Content;
+    $script = Invoke-WebRequest -Uri "http://$env:TUNNEL/profile?pid=$PID&shell=powershell&domain=$Env:UserName@$Env:ComputerName&tunnel=$env:TUNNEL" -Body '{}' -Method POST -ContentType 'application/json' | Select-Object -Expand Content;
     Invoke-Command -NoNewScope ([ScriptBlock]::Create($script));
 }
 

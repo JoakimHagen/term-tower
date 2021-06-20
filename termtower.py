@@ -66,7 +66,7 @@ def create_prompt(template, state):
     return nesttempl.process(template, subst_lookup)
 
 
-def update_state(state, template, proc, domain):
+def update_state(state, template, pid, proc, domain):
     if not state:
         state = dict()
 
@@ -79,8 +79,8 @@ def update_state(state, template, proc, domain):
         trace = state['trace']
         # idempotence check
         last = len(trace) > 0 and trace[-1]
-        if not last or last['domain'] != domain or last['proc'] != proc:
-            trace.append({ 'proc': proc, 'domain': domain })
+        if not last or last['domain'] != domain or last['proc'] != proc or last['pid'] != pid:
+            trace.append({ 'pid': pid, 'proc': proc, 'domain': domain })
 
     if template:
         state['template'] = template
@@ -89,16 +89,6 @@ def update_state(state, template, proc, domain):
     state['prompt'] = create_prompt(state['template'], state)
 
     return state
-
-def get_target_shell_cmd(target):
-    if target == 'bash':
-        return 'bash --rcfile {{ profile.file }} -i'
-    elif target == 'powershell':
-        return 'powershell -NoProfile -NoExit -Command {{ profile.content }}'
-    elif target == 'cmd':
-        return 'powershell -NoProfile -NoExit -Command {{ profile.content }}'
-    else:
-        raise ValueError(f"unrecognized target shell '{target}'")
 
 class Server:
 
@@ -205,11 +195,14 @@ def r_profile():
     print(json.dumps(state))
     template = request.args.get('template')
     tunnel = request.args.get('tunnel')
+    pid = request.args.get('pid')
+    if not pid:
+        pid = -1
     proc = request.args.get('proc')
     if not proc:
         proc = shell
     domain = request.args.get('domain')
-    state = update_state(state, template, proc, domain)
+    state = update_state(state, template, pid, proc, domain)
     state_json = json.dumps(state)
     print(state_json)
     

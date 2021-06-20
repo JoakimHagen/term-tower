@@ -6,6 +6,8 @@ PS1TEMPLATE=$(echo '{{ PROMPT }}' | sed 's|{cwd}|\\w|g')
 PS1="$PS1TEMPLATE"
 PS2='| '
 
+TRACE_STATE=$(echo "$TRACE_STATE" | sed s/-1/$$/)
+
 if [ "$0" = "sh" ] || [ "$0" = "dash" ]; then
 
     sh_update_prompt() {
@@ -42,7 +44,7 @@ discovershell() {
 }
 
 getinitscript() {
-    curl -m3 --data "$TRACE_STATE" --request POST -H "Content-Type: application/json" "http://$TUNNEL/bootstrap?shell=$1&tunnel=$2"
+    curl -sm3 --data "$TRACE_STATE" --request POST -H "Content-Type: application/json" "http://$TUNNEL/bootstrap?shell=$1&tunnel=$2"
 }
 
 escArgv() {
@@ -79,6 +81,6 @@ resettrace() {
     if [ -z "$TUNNEL" ]; then
         TUNNEL='127.0.0.1:44022'
     fi
-    script=$(curl -sm3 --data "{}" --request POST -H "Content-Type: application/json" "http://$TUNNEL/p2?shell=bash&domain=$USER@$HOSTNAME&tunnel=$TUNNEL")
+    script=$(curl -sm3 --data "{}" --request POST -H "Content-Type: application/json" "http://$TUNNEL/profile?shell=bash&domain=$USER@$HOSTNAME&tunnel=$TUNNEL")
     eval "$script"
 }
