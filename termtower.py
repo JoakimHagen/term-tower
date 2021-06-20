@@ -19,90 +19,13 @@ if not plugins:
 
 init_filename  = 'bootstrap'
 setup_filename = 'setup'
-
-posix_bash_command = '''
-    tempfile=$(mktemp /tmp/bashrc-XXXXXX);
-    getprofile > $tempfile;
-    bash --rcfile $tempfile -i;
-    rm $tempfile;
-    '''
-
-bash_bash_command = '''
-    bash --rcfile <(getprofile) -i;
-    '''
-
-bash_powershell_command = '''
-    powershell -Command $(getprofile);
-    '''
-
-powershell_powershell_command = '''
-    powershell -Command (Get-Profile);
-    '''
-
-powershell_bash_command = '''
-    $TempFile = New-TemporaryFile;
-    Get-Profile | Out-File $TempFile;
-    bash --rcfile $TempFile -i;
-    Delete-File $TempFile;
-    '''
-
-bash_tempfile = ["""
-tempfile=$(mktemp /tmp/bashrc-XXXXXX);
-getprofile > $tempfile;
-""","""
-rm $tempfile;
-"""
-]
-powershell_tempfile = ["""
-$tempfile = New-TemporaryFile;
-Get-Profile | Out-File $tempfile;
-""","""
-Remove-Item $tempfile;
-"""
-]
-
-def get_bootstrap(bootstrap_script, lang='bash', command='bash --rcfile {{ profile.file }} -i', target_lang='bash'):
-    if lang == 'bash' or lang == 'dash' or lang == 'sh':
-        context = dict(profile = dict(
-            content = "$(getprofile)",
-            file    = "$tempfile"
-        ))
-        if 'profile.file' in command:
-            context['before'] = bash_tempfile[0]
-            context['after']  = bash_tempfile[1]
-        else:
-            context['before'] = ''
-            context['after']  = ''
-    elif lang == 'powershell':
-        context = dict(profile = dict(
-            content = "(EscArgv (Get-Profile))",
-            file    = "$tempfile"
-        ))
-        if 'profile.file' in command:
-            context['before'] = powershell_tempfile[0]
-            context['after']  = powershell_tempfile[1]
-        else:
-            context['before'] = ''
-            context['after']  = ''
-    
-    command = command.replace('{{ profile.file }}', context['profile']['file'])
-    command = command.replace('{{ profile.content }}', context['profile']['content'])
-
-    bootstrap_script = bootstrap_script.replace('{{ shell }}', target_lang)
-
-    # context['command'] = fill_template(command, context)
-
-    return bootstrap_script.replace('{{ command }}', context['before'] + command + context['after'])
-
-    # return fill_template(bootstrap_script, context)
-
-def root_dir():
-    return path.abspath(path.dirname(__file__))
+tunnel_port = 44022
+root_dir = path.abspath(path.dirname(__file__))
 
 def get_file(filename):
     filename = path.relpath(filename)
     try:
-        src = path.join(root_dir(), filename)
+        src = path.join(root_dir, filename)
         return open(src).read()
     except IOError as exc:
         return str(exc)
@@ -208,7 +131,7 @@ def get_plugin(language):
         if p.is_supported(server, language):
             return p
 
-def get_bootstrap_script(language, target_shell=None, tunnel="127.0.0.1:44022", state={}):
+def get_bootstrap_script(language, target_shell=None, tunnel=f"127.0.0.1:{tunnel_port}", state={}):
 
     plugin = get_plugin(language)
     if plugin is None:
@@ -242,7 +165,7 @@ def get_bootstrap_script(language, target_shell=None, tunnel="127.0.0.1:44022", 
 
     return bootstrap + '\n' + command
 
-def get_profile_script(language, tunnel="127.0.0.1:44022", state={}):
+def get_profile_script(language, tunnel=f"127.0.0.1:{tunnel_port}", state={}):
     plugin = get_plugin(language)
     if plugin is None:
         raise ValueError(f"language '{language}' is not supported!")
@@ -263,61 +186,13 @@ def route_bootstrap():
     shell   = request.args.get('shell')
     t_shell = request.args.get('target')
     tunnel  = request.args.get('tunnel')
-    command = request.args.get('command')
+    #command = request.args.get('command')
     state = request.json
     if not state:
         state = dict()
     print(json.dumps(state))
 
     return get_bootstrap_script(shell, t_shell, tunnel, state)
-
-    if not command:
-        command = get_target_shell_cmd(t_shell)
-
-    if shell == 'bash' or shell == 'dash' or shell == 'sh':
-        content = get_file('templates/posix/' + init_filename + '.sh')
-        content = get_bootstrap(content, lang='sh', command=command, target_lang=t_shell)
-    elif shell == 'powershell':
-        content = get_file('templates/powershell/' + init_filename + '.ps1')
-        content = get_bootstrap(content, lang='powershell', command=command, target_lang=t_shell)
-    elif shell == 'cmd':
-        content = get_file('templates/wincmd/' + init_filename + '.bat')
-    else:
-        content = '#UNRECOGNIZED SHELL ' + shell
-
-    content = content.replace('{{ STATE }}', json.dumps(state))
-    content = content.replace('{{ tunnel }}', tunnel)
-
-    return Response(content, mimetype="text/x-shellscript")
-
-@app.route('/init', methods=['GET', 'POST'])
-def init():
-    path = ''
-    shell = request.args.get('shell')
-    tunnel = request.args.get('tunnel')
-    token = request.args.get('token')
-    
-    state = request.json
-    if not state:
-        state = dict()
-
-    if shell == 'bash':
-        content = get_file('templates/posix/' + init_filename + '.sh')
-        content = content.replace('{{ $PTRACE_PATH }}', path.replace('\\', '\\\\'))
-        content = content.replace('{{ tunnel }}', tunnel)
-        content = content.replace('{{ STATE }}', json.dumps(state))
-    elif shell == 'powershell':
-        content = get_file('templates/powershell/' + init_filename + '.ps1')
-        content = content.replace('{{ $TUNNEL_PORT }}', tunnel)
-        content = content.replace('{{ STATE }}', json.dumps(state))
-    elif shell == 'cmd':
-        content = get_file('templates/wincmd/' + init_filename + '.bat')
-        content = content.replace('{{ $TUNNEL_PORT }}', tunnel)
-        content = content.replace('{{ STATE }}', json.dumps(state))
-    else:
-        content = '#UNRECOGNIZED SHELL ' + shell
-
-    return Response(content, mimetype="text/x-shellscript")
 
 @app.route('/profile', methods=['GET','POST'])
 def r_profile():
@@ -340,29 +215,6 @@ def r_profile():
     
     return get_profile_script(shell, tunnel, state)
 
-    if shell == 'bash':
-        content = get_file('templates/posix/' + setup_filename + '.sh')
-    elif shell == 'powershell':
-        content = get_file('templates/powershell/' + setup_filename + '.ps1')
-    elif shell == 'cmd':
-        content = get_file('templates/powershell/' + setup_filename + '.ps1')
-    else:
-        raise ValueError(f"unrecognized shell {shell}")
-    
-    content = content.replace('{{ tunnel }}', tunnel or '127.0.0.1:44022')
-    content = content.replace('{{ STATE }}', state_json)
-    content = content.replace('{{ PROMPT }}', state['prompt'])
-
-    return Response(content, mimetype="text/x-shellscript")
-
-@app.route('/createjson', methods=['GET','POST'])
-def createjson():
-    state = request.json
-    template = request.args.get('template')
-    proc = request.args.get('proc')
-    domain = request.args.get('domain')
-    return update_state(state, template, proc, domain)
-
 @app.route('/prompt', methods=['POST'])
 def prompt():
     template = request.args.get('template')
@@ -384,7 +236,7 @@ def vscode():
 
 if __name__ == '__main__':
     wsgi_ip='0.0.0.0'
-    wsgi_port=44022
+    wsgi_port=tunnel_port
     http_server = WSGIServer((wsgi_ip, wsgi_port), app)
     print(f"Serving on {wsgi_ip}:{wsgi_port}")
     http_server.serve_forever()
