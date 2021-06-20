@@ -1,9 +1,21 @@
-import os
+from os import walk, path
 import json
 from subprocess import run
 from flask import Flask, Response, request
 from gevent.pywsgi import WSGIServer
 import nesttempl
+
+plugins = []
+for dirpath, dirnames, filenames in walk("."):
+    if not "plugin.py" in filenames:
+        continue
+    directory = path.basename(dirpath)
+    module = __import__(directory + ".plugin")
+    plugins.append(module.plugin)
+    print("plugin imported: " + module.__name__)
+
+if not plugins:
+    print("no plugins were found in working-directory")
 
 init_filename  = 'bootstrap'
 setup_filename = 'setup'
@@ -85,11 +97,12 @@ def get_bootstrap(bootstrap_script, lang='bash', command='bash --rcfile {{ profi
     # return fill_template(bootstrap_script, context)
 
 def root_dir():
-    return os.path.abspath(os.path.dirname(__file__))
+    return path.abspath(path.dirname(__file__))
 
 def get_file(filename):
+    filename = path.relpath(filename)
     try:
-        src = os.path.join(root_dir(), filename)
+        src = path.join(root_dir(), filename)
         return open(src).read()
     except IOError as exc:
         return str(exc)
@@ -164,6 +177,80 @@ def get_target_shell_cmd(target):
     else:
         raise ValueError(f"unrecognized target shell '{target}'")
 
+class Server:
+
+    def __init__(self) -> None:
+        pass
+
+    def get_profile_url(self, domain):
+        profile_url = "http://{{ tunnel }}/profile?shell={{ shell }}&domain={{ domain }}&tunnel={{ tunnel }}"
+        return profile_url.replace('{{ domain }}', domain)
+
+    def get_file(self, filename):
+        return get_file(filename)
+
+server = Server()
+
+def include_plugin(plugin):
+    if '__name__' in dir(plugin):
+        name = plugin.__name__
+    else:
+        name = plugin.__class__.__name__
+    print("plugin imported: " + name)
+    plugins.append(plugin)
+
+import inspect
+
+def get_plugin(language):
+    if not language:
+        raise ValueError(f"language can not None or empty")
+    for p in plugins:
+        if p.is_supported(server, language):
+            return p
+
+def get_bootstrap_script(language, target_shell=None, tunnel="127.0.0.1:44022", state={}):
+
+    plugin = get_plugin(language)
+    if plugin is None:
+        raise ValueError(f"language '{language}' is not supported!")
+
+    if not target_shell:
+        target_shell = language
+        target_shell_plugin = plugin
+    elif target_shell != language:
+        target_shell_plugin = get_plugin(target_shell)
+        if target_shell_plugin is None:
+            raise ValueError(f"language '{target_shell}' is not supported!")
+    else:
+        target_shell_plugin = plugin
+    
+    command = target_shell_plugin.start_shell(server, target_shell)
+
+    if '{{ profile.file }}' in command:
+        create_cmd = plugin.create_temp_file(server, language)
+        delete_cmd = plugin.delete_temp_file(server, language)
+        command = '\n'.join([create_cmd, command, delete_cmd]).replace('{{ profile.file }}', plugin.refer_temp_file(server, language))
+    
+    if '{{ profile.content }}' in command:
+        command = command.replace('{{ profile.content }}', plugin.refer_argument_script(server, language))
+
+    bootstrap = plugin.get_bootstrap(server, language)
+    bootstrap = bootstrap \
+        .replace('{{ tunnel }}', tunnel) \
+        .replace('{{ shell }}', target_shell) \
+        .replace('{{ STATE }}', json.dumps(state))
+
+    return bootstrap + '\n' + command
+
+def get_profile_script(language, tunnel="127.0.0.1:44022", state={}):
+    plugin = get_plugin(language)
+    if plugin is None:
+        raise ValueError(f"language '{language}' is not supported!")
+    return plugin.get_profile(server, language) \
+        .replace('{{ tunnel }}', tunnel) \
+        .replace('{{ shell }}', language) \
+        .replace('{{ STATE }}', json.dumps(state)) \
+        .replace('{{ PROMPT }}', state['prompt'])
 
 app = Flask(__name__)
 
@@ -173,16 +260,17 @@ def health_check():
 
 @app.route('/bootstrap', methods=['GET', 'POST'])
 def route_bootstrap():
-    shell = request.args.get('shell')
+    shell   = request.args.get('shell')
     t_shell = request.args.get('target')
-    if not t_shell:
-        t_shell = shell
-    tunnel = request.args.get('tunnel')
+    tunnel  = request.args.get('tunnel')
     command = request.args.get('command')
     state = request.json
     if not state:
         state = dict()
     print(json.dumps(state))
+
+    return get_bootstrap_script(shell, t_shell, tunnel, state)
+
     if not command:
         command = get_target_shell_cmd(t_shell)
 
@@ -231,10 +319,13 @@ def init():
 
     return Response(content, mimetype="text/x-shellscript")
 
-@app.route('/p2', methods=['GET','POST'])
-def part2():
+@app.route('/profile', methods=['GET','POST'])
+def r_profile():
     shell = request.args.get('shell')
     
+    if (shell.startswith('-')):
+        shell = shell[1:]
+
     state = request.json
     print(json.dumps(state))
     template = request.args.get('template')
@@ -246,6 +337,8 @@ def part2():
     state = update_state(state, template, proc, domain)
     state_json = json.dumps(state)
     print(state_json)
+    
+    return get_profile_script(shell, tunnel, state)
 
     if shell == 'bash':
         content = get_file('templates/posix/' + setup_filename + '.sh')
@@ -295,3 +388,4 @@ if __name__ == '__main__':
     http_server = WSGIServer((wsgi_ip, wsgi_port), app)
     print(f"Serving on {wsgi_ip}:{wsgi_port}")
     http_server.serve_forever()
+
